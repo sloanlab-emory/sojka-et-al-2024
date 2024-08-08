@@ -746,3 +746,148 @@ p %>%
   )
 #when the plot window pops up, hover over the top right corner of plot and click
 #the camera icon to download plot. it should now download as an svg instead of png
+
+
+#########################################################################
+#correlate organoid and pseudobulk Ramos data
+
+#read in pseudobulk data
+age_pseudo<- read.csv(file = "C:/Users/caitl/Documents/third rotation/pseudotime/pseudo_age_cts_df.csv")
+age_pseudo<- read.csv(file = "C:/Users/caitl/Documents/third rotation/pseudotime/pseudo_cts_df.csv")
+
+#read in organoid count matrix
+library(readxl)
+org_cts<- read_xlsx("C:/Users/caitl/Documents/third rotation/Organoid maturation timeline/HiSeq/RNA-seq/master_featurecounts.xlsx", col_names = T)
+
+#filter age_pseudo to only keep genes that are highly expressed in gIPC
+gIPC_genes<- read.csv("C:/Users/caitl/Documents/third rotation/pseudotime/gIPC_markers.csv")
+gIPC_genes_subset <- gIPC_genes[gIPC_genes$p_val_adj < 0.01,]
+#sort for the top 50, 100, and 500 genes (sorted by FC)
+gIPC_genes_subset <- gIPC_genes_subset[order(gIPC_genes_subset$avg_log2FC, decreasing = T),]
+gIPC_genes_subset2 <- gIPC_genes_subset[1:50,]
+gIPC_genes_subset2 <- gIPC_genes_subset[1:100,] #ended up using this
+gIPC_genes_subset2 <- gIPC_genes_subset[1:500,]
+
+library(dplyr)
+age_pseudo <- age_pseudo[age_pseudo$X %in% gIPC_genes_subset2$X,]
+rownames(age_pseudo) <- age_pseudo$X
+
+# Filter columns containing 'gIPC' in their names
+gIPC_age_pseudo <- age_pseudo %>% 
+  select(contains("gIPC"))
+gIPC_age_pseudo <- as.data.frame(gIPC_age_pseudo)
+
+org_cts <- as.data.frame(org_cts)
+org_cts <- org_cts[org_cts$Geneid %in% rownames(gIPC_age_pseudo),]
+gene_length <- as.vector(org_cts$Length)
+org_cts <- as.data.frame(org_cts)
+rownames(org_cts) <- org_cts$Geneid
+org_cts <- org_cts[,-c(1,2)]
+
+
+#normalize all using TPM method
+tpm3 <- function(counts,len) {
+  x <- counts/len
+  return(t(t(x)*1e6/colSums(x)))
+}
+
+org_tpm <- tpm3(org_cts, gene_length)
+
+#merge the two and make into a matrix
+gIPC_age_pseudo <- as.data.frame(gIPC_age_pseudo)
+gIPC_age_pseudo$Gene_id <- rownames(gIPC_age_pseudo)
+
+org_tpm <- as.data.frame(org_tpm)
+org_tpm$Gene_id <- rownames(org_tpm)
+
+merged_data <- merge(org_tpm, gIPC_age_pseudo, by = "Gene_id")
+
+rownames(merged_data) <- merged_data$Gene_id
+merged_data <- merged_data[,-1]
+merged_data_mtx <- as.matrix(merged_data)
+
+
+library(Hmisc)
+cor_result <- round(cor(merged_data_mtx, method="spearman"),2)
+a <- cor_result[-c(1:21),-22]
+scaled <- as.data.frame(scale(a))
+scaled2 <- as.vector(scaled)
+#min: -1.833302
+#max: 1.629602
+write.csv(scaled2, file = "hCS_gIPC_cor.csv")
+
+remotes::install_github("jmw86069/colorjam")
+library(colorjam)
+scaled$sample<- rownames(scaled)
+x <- jamba::nameVector(scaled, y = scaled$sample)
+jamba::showColors(vals2colorLevels(x, col = "BuPu", divergent = T))
+
+#check out <https://jmw86069.github.io/colorjam/index.html> to make own color palette
+
+########################
+
+#try correlation with AS split by age
+age_pseudo<- read.csv(file = "C:/Users/caitl/Documents/third rotation/pseudotime/pseudo_bin_cts_df.csv")
+
+#read in organoid count matrix
+library(readxl)
+org_cts<- read_xlsx("C:/Users/caitl/Documents/third rotation/Organoid maturation timeline/HiSeq/RNA-seq/master_featurecounts.xlsx", col_names = T)
+
+#filter age_pseudo to only keep genes that are highly expressed in gIPC
+AC_genes<- read.csv("C:/Users/caitl/Documents/third rotation/pseudotime/AC_markers.csv")
+AC_genes_subset <- AC_genes[AC_genes$p_val_adj < 0.01,]
+#sort for the top 50, 100, and 500 genes (sorted by FC)
+AC_genes_subset <- AC_genes_subset[order(AC_genes_subset$avg_log2FC, decreasing = T),]
+AC_genes_subset2 <- AC_genes_subset[1:50,]
+AC_genes_subset2 <- AC_genes_subset[1:100,]#try this first
+AC_genes_subset2 <- AC_genes_subset[1:500,]
+
+library(dplyr)
+age_pseudo <- age_pseudo[age_pseudo$X %in% AC_genes_subset2$X,]
+rownames(age_pseudo) <- age_pseudo$X
+
+# Filter columns containing 'AC' in their names
+AC_age_pseudo <- age_pseudo %>% 
+  select(contains("AC"))
+AC_age_pseudo <- AC_age_pseudo %>% 
+  select(-contains("TAC"))
+
+
+org_cts <- as.data.frame(org_cts)
+org_cts <- org_cts[org_cts$Geneid %in% rownames(AC_age_pseudo),]
+gene_length <- as.vector(org_cts$Length)
+org_cts <- as.data.frame(org_cts)
+rownames(org_cts) <- org_cts$Geneid
+org_cts <- org_cts[,-c(1,2)]
+
+
+#normalize all using TPM method
+tpm3 <- function(counts,len) {
+  x <- counts/len
+  return(t(t(x)*1e6/colSums(x)))
+}
+
+org_tpm <- tpm3(org_cts, gene_length)
+
+#merge the two and make into a matrix
+AC_age_pseudo <- as.data.frame(AC_age_pseudo)
+AC_age_pseudo$Gene_id <- rownames(AC_age_pseudo)
+
+org_tpm <- as.data.frame(org_tpm)
+org_tpm$Gene_id <- rownames(org_tpm)
+
+merged_data <- merge(org_tpm, AC_age_pseudo, by = "Gene_id")
+
+rownames(merged_data) <- merged_data$Gene_id
+merged_data <- merged_data[,-1]
+merged_data_mtx <- as.matrix(merged_data)
+
+
+library(Hmisc)
+cor_result <- round(cor(merged_data_mtx, method="spearman"),2)
+a <- cor_result[-c(1:21),-c(22:25)]
+
+#use same color palette as for gIPCs
+library(RColorBrewer)
+heatmap.2(t(as.matrix(a)), dendrogram= "none",Colv = F, Rowv = F,colRow = F, trace = NULL,scale = "column",col=brewer.pal(n = 9, name = "BuPu"))
+write.csv(t(as.matrix(a)), file = "hCS_AC_cor.csv")
